@@ -13,15 +13,18 @@ const downloadDirectory = directory + "downloads/";
 const extractionDirectory = directory + "shapes/";
 const geojsonDirectory = directory + "geojson/";
 
+const log = (i, country, more) => console.log(`${i+1}/${COUNTRY_CODES.length} ${country} - ${more}`);
 
 const convertPromises = COUNTRY_CODES.map((countryCode, i) => () => new Promise((resolve, reject) => {
 	const url = BASE_URL + countryCode + SUFFIX_URL;
 	const zipPath = downloadDirectory + countryCode + SUFFIX_URL;
+	const admLevel = COUNTRY_CODES_ADM0.includes(countryCode) ? 0 : 1;
+	const filename = countryCode + '_adm' + admLevel;
+
+	const geojsonPath = geojsonDirectory + filename + '.geojson';
 
 	const cb = () => {
-		const admLevel = COUNTRY_CODES_ADM0.includes(countryCode) ? 0 : 1;
-		const filename = countryCode + '_adm' + admLevel;
-
+		
 		const zip = new AdmZip(zipPath);
 		const zipEntries = zip.getEntries();
 		for (const entry of zipEntries) {
@@ -30,21 +33,27 @@ const convertPromises = COUNTRY_CODES.map((countryCode, i) => () => new Promise(
 			}
 		}
 
-		if (fs.existsSync(geojsonDirectory + filename + '.geojson')) {
-			console.log((i + 1) + '/' + COUNTRY_CODES.length + ' - SKIPPED');
-			resolve();
-			return;
+		if (fs.existsSync(geojsonPath)) {
+			log(i, countryCode, 'SKIPPED');
+			return resolve();
 		}
 
 		shapefilePath = extractionDirectory + countryCode + '/' + filename + '.shp';
 		shapefile.read(shapefilePath)
 			.then(result => {
-				fs.writeFile(geojsonDirectory + filename + '.geojson', JSON.stringify(result), err => {
+				fs.writeFile(geojsonPath, JSON.stringify(result), err => {
 					if (err) {
 						reject();
-						return console.log((i + 1) + '/' + COUNTRY_CODES.length + ' - ERROR: ' + err);
+						log(i, countryCode, 'ERROR: ' + err);
 					}
-					console.log((i + 1) + '/' + COUNTRY_CODES.length + ' - SUCCESS');
+
+					log(i, countryCode, 'SUCCESS');
+
+					const filesize = fs.statSync(geojsonPath).size / 1024 / 1024;
+					if (filesize > 10) {
+						console.log('\t Prettify heavy(' + Math.round(filesize, -1) + 'MB), gonna simplify it');
+					}
+
 					resolve();
 				});
 			})
@@ -61,4 +70,8 @@ const convertPromises = COUNTRY_CODES.map((countryCode, i) => () => new Promise(
 	});
 }));
 
-convertPromises.reduce((curr, next) => curr.then(next), Promise.resolve())
+// Execute promises one after the other to avoid filling the RAM when reading shapefiles
+convertPromises.reduce(
+	(curr, next) => curr.then(next),
+	Promise.resolve()
+);
