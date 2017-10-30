@@ -44,7 +44,8 @@ const convertPromises = COUNTRY_CODES.map((countryCode, i) => () => new Promise(
 		}
 
 		shapefilePath = extractionDirectory + countryCode + '/' + filename + '.shp';
-		shapefile.read(shapefilePath)
+		dbfPath = extractionDirectory + countryCode + '/' + filename + '.dbf';
+		shapefile.read(shapefilePath, dbfPath, { encoding: 'utf-8' })
 			.then(result => {
 
 				const dataSize = Buffer.byteLength(JSON.stringify(result), 'utf8') / 1024 / 1024; // in MB
