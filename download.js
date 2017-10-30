@@ -2,6 +2,11 @@ const http = require('follow-redirects').http;
 const fs = require('fs');
 const shapefile = require("shapefile");
 const AdmZip = require('adm-zip');
+const simplify = require('simplify-geojson');
+
+
+const simplifyThreshold = 0; // // Simplify if geojson size is over this value in MB (0 to simplify all)
+const simplifyTolerance = 0.01; // Higher is lighter (default 0.001)
 
 const COUNTRY_CODES = ["AFG","XAD","ALA","ALB","DZA","ASM","AND","AGO","AIA","ATA","ATG","ARG","ARM","ABW","AUS","AUT","AZE","BHS","BHR","BGD","BRB","BLR","BEL","BLZ","BEN","BMU","BTN","BOL","BES","BIH","BWA","BVT","BRA","IOT","VGB","BRN","BGR","BFA","BDI","KHM","CMR","CAN","CPV","XCA","CYM","CAF","TCD","CHL","CHN","CXR","XCL","CCK","COL","COM","COK","CRI","CIV","HRV","CUB","CUW","CYP","CZE","COD","DNK","DJI","DMA","DOM","ECU","EGY","SLV","GNQ","ERI","EST","ETH","FLK","FRO","FJI","FIN","FRA","GUF","PYF","ATF","GAB","GMB","GEO","DEU","GHA","GIB","GRC","GRL","GRD","GLP","GUM","GTM","GGY","GIN","GNB","GUY","HTI","HMD","HND","HKG","HUN","ISL","IND","IDN","IRN","IRQ","IRL","IMN","ISR","ITA","JAM","JPN","JEY","JOR","KAZ","KEN","KIR","XKO","KWT","KGZ","LAO","LVA","LBN","LSO","LBR","LBY","LIE","LTU","LUX","MAC","MKD","MDG","MWI","MYS","MDV","MLI","MLT","MHL","MTQ","MRT","MUS","MYT","MEX","FSM","MDA","MCO","MNG","MNE","MSR","MAR","MOZ","MMR","NAM","NRU","NPL","NLD","NCL","NZL","NIC","NER","NGA","NIU","NFK","PRK","XNC","MNP","NOR","OMN","PAK","PLW","PSE","PAN","PNG","PRY","PER","PHL","PCN","POL","PRT","PRI","QAT","COG","REU","ROU","RUS","RWA","BLM","MAF","SHN","KNA","LCA","SPM","VCT","WSM","SMR","STP","SAU","SEN","SRB","SYC","SLE","SGP","SXM","SVK","SVN","SLB","SOM","ZAF","SGS","KOR","SSD","ESP","LKA","SDN","SUR","SJM","SWZ","SWE","CHE","SYR","TWN","TJK","TZA","THA","TLS","TGO","TKL","TON","TTO","TUN","TUR","TKM","TCA","TUV","UGA","UKR","ARE","GBR","USA","UMI","URY","UZB","VUT","VAT","VEN","VNM","VIR","WLF","ESH","YEM","ZMB","ZWE"];
 const COUNTRY_CODES_ADM0 = ["ABW", "BVT", "IOT", "CXR", "XCA", "CCK", "CUW", "COK", "HMD", "GIB", "AIA", "MLT", "MCO", "MAF", "KIR", "MDV", "BLM", "VAT", "NFK", "SGS", "MHL", "SXM", "FLK", "ATA", "PCN", "NIU", "XCL"]; // Countries without ADM1
@@ -41,18 +46,24 @@ const convertPromises = COUNTRY_CODES.map((countryCode, i) => () => new Promise(
 		shapefilePath = extractionDirectory + countryCode + '/' + filename + '.shp';
 		shapefile.read(shapefilePath)
 			.then(result => {
+
+				const dataSize = Buffer.byteLength(JSON.stringify(result), 'utf8') / 1024 / 1024; // in MB
+				if (dataSize > simplifyThreshold) {
+					const resultSimplified = simplify(result, simplifyTolerance);
+
+					dataSimplifiedSize = Buffer.byteLength(JSON.stringify(resultSimplified), 'utf8') / 1024 / 1024;
+					console.log(`From: ${Math.round(dataSize * 100) / 100} MB -> To ${Math.round(dataSimplifiedSize * 100) / 100} MB`);
+
+					result = resultSimplified;
+				}
+
 				fs.writeFile(geojsonPath, JSON.stringify(result), err => {
 					if (err) {
 						reject();
 						log(i, countryCode, 'ERROR: ' + err);
 					}
 
-					log(i, countryCode, 'SUCCESS');
-
-					const filesize = fs.statSync(geojsonPath).size / 1024 / 1024;
-					if (filesize > 10) {
-						console.log('\t Prettify heavy(' + Math.round(filesize, -1) + 'MB), gonna simplify it');
-					}
+					log(i, countryCode, 'SUCCESS');					
 
 					resolve();
 				});
